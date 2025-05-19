@@ -1,195 +1,206 @@
 import sys
 import subprocess
 import logging
-import serial.tools.list_ports
+import threading
+from queue import Queue
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QProgressBar, QLabel, QLineEdit, QFileDialog,
-    QInputDialog
+    QInputDialog, QTabWidget, QListWidget, QSplitter, QMenu, QMenuBar
 )
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtGui import QTextCursor, QColor, QAction
+from PySide6.QtCore import QProcess, Qt, QSettings
 
-# Configure logging
-logging.basicConfig(
-    filename='k5tool_gui.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Async logger thread
+log_queue = Queue()
+def log_writer():
+    while True:
+        record = log_queue.get()
+        if record is None:
+            break
+        with open(settings.value('logfile', 'k5tool_gui.log'), 'a', encoding='utf-8') as f:
+            f.write(record + '\n')
+log_thread = threading.Thread(target=log_writer, daemon=True)
+log_thread.start()
+
+# Load settings
+settings = QSettings('K5Tool', 'K5ToolGUI')
 
 class K5ToolGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("K5Tool GUI")
-        self.resize(900, 600)
-
-        # Central widget
-        central = QWidget()
-        self.setCentralWidget(central)
-
-        # Main layout
-        main_layout = QHBoxLayout(central)
-
-        # Command buttons panel
-        cmd_panel = QWidget()
-        cmd_layout = QVBoxLayout(cmd_panel)
-        cmd_layout.setAlignment(Qt.AlignTop)
-
-        # Define buttons for each command
-        commands = [
-            ("Check Connection", ["-hello"]),
-            ("List Ports", ["-port"]),
-            ("Set Port", ["-port", "<port>"]),
-            ("Reboot Radio", ["-reboot"]),
-            ("Read ADC", ["-rdadc", "[output]"]),
-            ("Read EEPROM", ["-rdee", "[offset]", "[size]", "[output]"]),
-            ("Write EEPROM", ["-wree", "[offset]", "<file>"]),
-            ("Flash Firmware", ["-wrflash", "<file>"]),
-            ("Flash Raw FW", ["-wrflashraw", "[version]", "<file>"]),
-            ("Unpack Image", ["-unpack", "<file>", "[output]"]),
-            ("Pack Image", ["-pack", "<version>", "<file>", "[output]"]),
-            ("Simulator", ["-simula"]),
-            ("Sniffer Mode", ["-sniffer"]),
-            ("Parse Hex", ["-parse", "<data>"]),
-            ("Parse Plain", ["-parse-plain", "<data>"])
-        ]
-
-        for label, args in commands:
-            btn = QPushButton(label)
-            btn.clicked.connect(lambda _, a=args: self.prepare_command(a))
-            cmd_layout.addWidget(btn)
-
-        # Right panel: args input, run/stop, output, progress
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-
-        # Arguments input
-        self.args_label = QLabel("Arguments:")
-        self.args_input = QLineEdit()
-        self.args_input.setPlaceholderText("Enter arguments separated by spaces or choose via buttons")
-
-        # Run and Stop buttons
-        btn_layout = QHBoxLayout()
-        self.run_button = QPushButton("Run Command")
-        self.run_button.clicked.connect(self.run_command)
-        self.stop_button = QPushButton("Stop")
-        self.stop_button.clicked.connect(self.stop_command)
-        self.stop_button.setEnabled(False)
-        btn_layout.addWidget(self.run_button)
-        btn_layout.addWidget(self.stop_button)
-
-        # Output display
-        self.output = QTextEdit()
-        self.output.setReadOnly(True)
-
-        # Progress bar
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-
-        # Assemble right layout
-        right_layout.addWidget(self.args_label)
-        right_layout.addWidget(self.args_input)
-        right_layout.addLayout(btn_layout)
-        right_layout.addWidget(self.output)
-        right_layout.addWidget(self.progress)
-
-        main_layout.addWidget(cmd_panel)
-        main_layout.addWidget(right_panel, stretch=1)
-
-        # QProcess for async execution
+        self.resize(1000, 700)
         self.process = QProcess()
+
+        # Menubar & Themes
+        menubar = QMenuBar(self)
+        self.setMenuBar(menubar)
+        settings_menu = menubar.addMenu("Settings")
+        theme_menu = QMenu("Theme", self)
+        settings_menu.addMenu(theme_menu)
+        light_act = QAction("Light", self, triggered=lambda: self.set_theme('light'))
+        dark_act = QAction("Dark", self, triggered=lambda: self.set_theme('dark'))
+        theme_menu.addAction(light_act)
+        theme_menu.addAction(dark_act)
+        path_act = QAction("Set k5tool Path", self, triggered=self.set_k5tool_path)
+        settings_menu.addAction(path_act)
+
+        # Central splitter for history and main
+        splitter = QSplitter(Qt.Horizontal)
+        self.history = QListWidget()
+        self.history.setToolTip("История ранее выполненных команд")
+        self.history.itemClicked.connect(self.load_history)
+        splitter.addWidget(self.history)
+
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+
+        # Buttons with tooltips
+        cmd_layout = QHBoxLayout()
+        self.buttons = []
+        cmds = [
+            ("Check Connection", "-hello", "Проверка соединения с радио"),
+            ("List Ports", "-port", "Список доступных COM-портов"),
+            ("Reboot Radio", "-reboot", "Перезагрузка радио"),
+            ("Read ADC", "-rdadc [output]", "Прочитать ADC и сохранить в файл"),
+            ("Read EEPROM", "-rdee [offset] [size] [output]", "Чтение EEPROM с опциями"),
+            ("Write EEPROM", "-wree [offset] <file>", "Запись EEPROM из файла"),
+            ("Flash Firmware", "-wrflash <file>", "Прошивка стандартного образа"),
+            ("Flash Raw FW", "-wrflashraw [version] <file>", "Прошивка RAW образа"),
+            ("Unpack Image", "-unpack <file> [output]", "Распаковка образа"),
+            ("Pack Image", "-pack <version> <file> [output]", "Упаковка образа"),
+            ("Simulator", "-simula", "Симуляция загрузчика"),
+            ("Sniffer Mode", "-sniffer", "Режим сниффера"),
+            ("Parse Hex", "-parse <data>", "Парсинг hex-пакета"),
+            ("Parse Plain", "-parse-plain <data>", "Парсинг plain-пакета")
+        ]
+        for text, cmd, tip in cmds:
+            btn = QPushButton(text)
+            btn.setToolTip(tip)
+            btn.clicked.connect(lambda _, c=cmd: self.prepare_command(c))
+            cmd_layout.addWidget(btn)
+            self.buttons.append(btn)
+        main_layout.addLayout(cmd_layout)
+
+        # Args input
+        self.args_input = QLineEdit()
+        self.args_input.setPlaceholderText("Аргументы командной строки")
+        main_layout.addWidget(self.args_input)
+
+        # Run/Stop layout
+        run_layout = QHBoxLayout()
+        self.run_btn = QPushButton("Run")
+        self.run_btn.clicked.connect(self.run_command)
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.clicked.connect(self.stop_command)
+        self.stop_btn.setEnabled(False)
+        run_layout.addWidget(self.run_btn)
+        run_layout.addWidget(self.stop_btn)
+        main_layout.addLayout(run_layout)
+
+        # Tabs for stdout/stderr/log
+        tabs = QTabWidget()
+        self.stdout_view = QTextEdit(readOnly=True)
+        self.stderr_view = QTextEdit(readOnly=True)
+        self.log_view = QTextEdit(readOnly=True)
+        tabs.addTab(self.stdout_view, "STDOUT")
+        tabs.addTab(self.stderr_view, "STDERR")
+        tabs.addTab(self.log_view, "Log File")
+        main_layout.addWidget(tabs)
+
+        # Progress & status
+        self.progress = QProgressBar()
+        self.status = QLabel("Ready")
+        bottom = QHBoxLayout()
+        bottom.addWidget(self.progress)
+        bottom.addWidget(self.status)
+        main_layout.addLayout(bottom)
+
+        splitter.addWidget(main_widget)
+        self.setCentralWidget(splitter)
+
+        # QProcess signals
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
         self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.finished.connect(self.process_finished)
 
-    def list_serial_ports(self):
-        ports = serial.tools.list_ports.comports()
-        return [f"{p.device} ({p.description})" for p in ports]
+        # apply stored theme
+        self.set_theme(settings.value('theme', 'light'))
 
-    def select_port(self):
-        items = self.list_serial_ports()
-        if not items:
-            self.output.append("<span style='color:red;'>No serial ports found.</span>")
-            return None
-        item, ok = QInputDialog.getItem(self, "Select Serial Port", "Available Ports:", items, 0, False)
-        if ok and item:
-            # Extract device name before space
-            return item.split(' ')[0]
-        return None
+    def set_k5tool_path(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Set k5tool Path")
+        if path:
+            settings.setValue('k5tool_path', path)
+            self.log(f"k5tool path set to {path}")
 
-    def prepare_command(self, args_template):
-        args_filled = []
-        for arg in args_template:
-            if arg == "<file>":
-                path, _ = QFileDialog.getOpenFileName(self, "Select File to Open")
-                if not path:
+    def set_theme(self, theme):
+        if theme == 'dark':
+            self.setStyleSheet("QWidget { background: #2b2b2b; color: #f0f0f0; }")
+        else:
+            self.setStyleSheet("")
+        settings.setValue('theme', theme)
+
+    def prepare_command(self, cmd_template):
+        parts = cmd_template.split()
+        filled = []
+        for part in parts:
+            if '<file>' in part or '[output]' in part:
+                sel = QFileDialog.getSaveFileName(self, "Select File")[0] if '[output]' in part else QFileDialog.getOpenFileName(self, "Select File")[0]
+                if not sel:
                     return
-                args_filled.append(path)
-            elif arg == "[output]":
-                path, _ = QFileDialog.getSaveFileName(self, "Select Output File")
-                if not path:
-                    return
-                args_filled.append(path)
-            elif arg == "<port>":
-                port = self.select_port()
-                if not port:
-                    return
-                args_filled.append(port)
-            elif arg == "-port" and len(args_template) == 1:
-                port = self.select_port()
-                if not port:
-                    return
-                args_filled.extend(["-port", port])
-                # fill and exit
-                self.args_input.setText(' '.join(args_filled))
-                return
+                filled.append(sel)
             else:
-                args_filled.append(arg)
-        self.args_input.setText(' '.join(args_filled))
+                filled.append(part)
+        self.args_input.setText(' '.join(filled))
 
     def run_command(self):
+        command = settings.value('k5tool_path', 'k5tool')
         args = self.args_input.text().split()
-        full_cmd = ["k5tool"] + args
-        logging.info(f"Running: {' '.join(full_cmd)}")
-
-        self.output.clear()
-        self.progress.setRange(0, 0)  # indeterminate
-        self.progress.setValue(0)
-        self.process.start(full_cmd[0], full_cmd[1:])
-        self.run_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
+        self.history.addItem(command + ' ' + ' '.join(args))
+        self.status.setText("Running...")
+        self.progress.setRange(0, 0)
+        self.stdout_view.clear(); self.stderr_view.clear()
+        self.process.start(command, args)
+        self.run_btn.setEnabled(False); self.stop_btn.setEnabled(True)
 
     def stop_command(self):
         if self.process.state() == QProcess.Running:
             self.process.kill()
-            logging.info("Process killed by user.")
-            self.output.append("<b>Process stopped by user.</b>")
-            self.progress.setRange(0, 100)
-            self.progress.setValue(0)
-            self.run_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
+            self.status.setText("Stopped")
+            self.progress.setRange(0, 100); self.progress.setValue(0)
+            self.run_btn.setEnabled(True); self.stop_btn.setEnabled(False)
 
     def handle_stdout(self):
-        data = self.process.readAllStandardOutput().data().decode()
-        self.output.append(data)
-        logging.info(data.strip())
-        for part in data.split():
-            if part.endswith('%') and part[:-1].isdigit():
-                self.progress.setRange(0, 100)
-                self.progress.setValue(int(part[:-1]))
+        text = self.process.readAllStandardOutput().data().decode()
+        self.stdout_view.moveCursor(QTextCursor.End)
+        self.stdout_view.insertHtml(f"<span>{text}</span>")
+        self.log(text)
+        for tok in text.split():
+            if tok.endswith('%') and tok[:-1].isdigit():
+                self.progress.setRange(0, 100); self.progress.setValue(int(tok[:-1]))
 
     def handle_stderr(self):
-        data = self.process.readAllStandardError().data().decode()
-        self.output.append(f"<span style='color:red;'>{data}</span>")
-        logging.error(data.strip())
+        text = self.process.readAllStandardError().data().decode()
+        self.stderr_view.moveCursor(QTextCursor.End)
+        self.stderr_view.insertHtml(f"<span style='color:red;'>{text}</span>")
+        self.log(text)
 
     def process_finished(self):
-        self.progress.setRange(0, 100)
-        self.progress.setValue(100)
-        self.run_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.output.append("<b>Done</b>")
-        logging.info("Process finished.")
+        self.status.setText("Done")
+        self.progress.setRange(0, 100); self.progress.setValue(100)
+        self.run_btn.setEnabled(True); self.stop_btn.setEnabled(False)
+
+    def load_history(self, item):
+        self.args_input.setText(item.text().split(' ', 1)[1])
+
+    def log(self, message):
+        log_queue.put(message)
+        self.log_view.append(message)
+
+    def closeEvent(self, event):
+        log_queue.put(None)
+        super().closeEvent(event)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
