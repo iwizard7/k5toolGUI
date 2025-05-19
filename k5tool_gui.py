@@ -1,9 +1,11 @@
 import sys
 import subprocess
 import logging
+import serial.tools.list_ports
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QTextEdit, QProgressBar, QLabel, QLineEdit, QFileDialog
+    QPushButton, QTextEdit, QProgressBar, QLabel, QLineEdit, QFileDialog,
+    QInputDialog
 )
 from PySide6.QtCore import QProcess, Qt
 
@@ -100,6 +102,21 @@ class K5ToolGUI(QMainWindow):
         self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.finished.connect(self.process_finished)
 
+    def list_serial_ports(self):
+        ports = serial.tools.list_ports.comports()
+        return [f"{p.device} ({p.description})" for p in ports]
+
+    def select_port(self):
+        items = self.list_serial_ports()
+        if not items:
+            self.output.append("<span style='color:red;'>No serial ports found.</span>")
+            return None
+        item, ok = QInputDialog.getItem(self, "Select Serial Port", "Available Ports:", items, 0, False)
+        if ok and item:
+            # Extract device name before space
+            return item.split(' ')[0]
+        return None
+
     def prepare_command(self, args_template):
         args_filled = []
         for arg in args_template:
@@ -113,6 +130,19 @@ class K5ToolGUI(QMainWindow):
                 if not path:
                     return
                 args_filled.append(path)
+            elif arg == "<port>":
+                port = self.select_port()
+                if not port:
+                    return
+                args_filled.append(port)
+            elif arg == "-port" and len(args_template) == 1:
+                port = self.select_port()
+                if not port:
+                    return
+                args_filled.extend(["-port", port])
+                # fill and exit
+                self.args_input.setText(' '.join(args_filled))
+                return
             else:
                 args_filled.append(arg)
         self.args_input.setText(' '.join(args_filled))
