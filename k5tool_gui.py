@@ -38,8 +38,8 @@ class K5ToolGUI(QMainWindow):
             ("List Ports", ["-port"]),
             ("Set Port", ["-port", "<port>"]),
             ("Reboot Radio", ["-reboot"]),
-            ("Read ADC", ["-rdadc"]),
-            ("Read EEPROM", ["-rdee", "[offset]", "[size]", "[file]"]),
+            ("Read ADC", ["-rdadc", "[output]"]),
+            ("Read EEPROM", ["-rdee", "[offset]", "[size]", "[output]"]),
             ("Write EEPROM", ["-wree", "[offset]", "<file>"]),
             ("Flash Firmware", ["-wrflash", "<file>"]),
             ("Flash Raw FW", ["-wrflashraw", "[version]", "<file>"]),
@@ -103,8 +103,8 @@ class K5ToolGUI(QMainWindow):
     def prepare_command(self, args_template):
         args_filled = []
         for arg in args_template:
-            if arg in ("<file>", "[file]"):
-                path, _ = QFileDialog.getOpenFileName(self, "Select File")
+            if arg == "<file>":
+                path, _ = QFileDialog.getOpenFileName(self, "Select File to Open")
                 if not path:
                     return
                 args_filled.append(path)
@@ -134,10 +134,8 @@ class K5ToolGUI(QMainWindow):
             self.process.kill()
             logging.info("Process killed by user.")
             self.output.append("<b>Process stopped by user.</b>")
-            # Reset progress bar
             self.progress.setRange(0, 100)
             self.progress.setValue(0)
-            # Reset buttons
             self.run_button.setEnabled(True)
             self.stop_button.setEnabled(False)
 
