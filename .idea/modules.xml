@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/k5toolUI.iml" filepath="$PROJECT_DIR$/.idea/k5toolUI.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/k5toolGUI.iml" filepath="$PROJECT_DIR$/.idea/k5toolGUI.iml" />
     </modules>
   </component>
 </project>
