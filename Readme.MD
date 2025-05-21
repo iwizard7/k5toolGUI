@@ -49,20 +49,20 @@
 ## Установка и запуск
 
 1. Клонируйте репозиторий:
-   ```bash
+    ```bash
    git clone https://github.com/iwizard7/k5toolGUI.git
    cd k5toolGUI
    ```
 2. Убедитесь, что у вас установлен Python 3 и PySide6:
-```bash
+    ```bash
 pip install PySide6
 ```
 3. Запустите GUI:
-```bash
+    ```bash
 python k5tool_gui.py
 ```
 3.1 или через скрипт
-```bash
+`   ``bash
 chmod +x ./run.sh
 ./run.sh
 ```
