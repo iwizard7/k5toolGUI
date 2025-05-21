@@ -55,15 +55,15 @@
    ```
 2. Убедитесь, что у вас установлен Python 3 и PySide6:
     ```bash
-pip install PySide6
+    pip install PySide6
     ```
 3. Запустите GUI:
     ```bash
-python k5tool_gui.py
+    python k5tool_gui.py
     ```
-3.1 или через скрипт
+4. или через скрипт
     ```bash
-chmod +x ./run.sh
-./run.sh
+    chmod +x ./run.sh
+    ./run.sh
     ```
-4. В меню "Настройки" задайте путь к исполняемому файлу k5tool.
+5. В меню "Настройки" задайте путь к исполняемому файлу k5tool.
