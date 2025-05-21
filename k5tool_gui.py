@@ -3,13 +3,17 @@ import subprocess
 import logging
 import threading
 from queue import Queue
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QProgressBar, QLabel, QLineEdit, QFileDialog,
-    QInputDialog, QTabWidget, QListWidget, QSplitter, QMenu, QMenuBar
+    QInputDialog, QTabWidget, QListWidget, QSplitter, QMenu, QMenuBar,
+    QMessageBox, QComboBox
 )
-from PySide6.QtGui import QTextCursor, QColor, QAction
+
 from PySide6.QtCore import QProcess, Qt, QSettings
+from PySide6.QtGui import QTextCursor, QColor, QAction, QKeySequence
+
 
 # Async logger thread
 log_queue = Queue()
@@ -33,20 +37,20 @@ class K5ToolGUI(QMainWindow):
         self.resize(1000, 700)
         self.process = QProcess()
 
-        # Menubar & Themes
+        # Меню и тема
         menubar = QMenuBar(self)
         self.setMenuBar(menubar)
-        settings_menu = menubar.addMenu("Settings")
-        theme_menu = QMenu("Theme", self)
+        settings_menu = menubar.addMenu("Настройки")
+        theme_menu = QMenu("Тема", self)
         settings_menu.addMenu(theme_menu)
-        light_act = QAction("Light", self, triggered=lambda: self.set_theme('light'))
-        dark_act = QAction("Dark", self, triggered=lambda: self.set_theme('dark'))
+        light_act = QAction("Светлая", self, triggered=lambda: self.set_theme('light'))
+        dark_act = QAction("Тёмная", self, triggered=lambda: self.set_theme('dark'))
         theme_menu.addAction(light_act)
         theme_menu.addAction(dark_act)
-        path_act = QAction("Set k5tool Path", self, triggered=self.set_k5tool_path)
+        path_act = QAction("Установить путь к k5tool", self, triggered=self.set_k5tool_path)
         settings_menu.addAction(path_act)
 
-        # Central splitter for history and main
+        # Основной сплиттер
         splitter = QSplitter(Qt.Horizontal)
         self.history = QListWidget()
         self.history.setToolTip("История ранее выполненных команд")
@@ -56,22 +60,22 @@ class K5ToolGUI(QMainWindow):
         main_widget = QWidget()
         main_layout = QVBoxLayout(main_widget)
 
-        # Buttons with tooltips
+        # Кнопки
         cmd_layout = QHBoxLayout()
         self.buttons = []
         cmds = [
-            ("Check Connection", "-hello", "Проверка соединения с радио"),
-            ("List Ports", "-port", "Список доступных COM-портов"),
-            ("Reboot Radio", "-reboot", "Перезагрузка радио"),
-            ("Read ADC", "-rdadc [output]", "Прочитать ADC и сохранить в файл"),
-            ("Read EEPROM", "-rdee [offset] [size] [output]", "Чтение EEPROM с опциями"),
-            ("Write EEPROM", "-wree [offset] <file>", "Запись EEPROM из файла"),
-            ("Flash Firmware", "-wrflash <file>", "Прошивка стандартного образа"),
-            ("Flash Raw FW", "-wrflashraw [version] <file>", "Прошивка RAW образа"),
-            ("Unpack Image", "-unpack <file> [output]", "Распаковка образа"),
-            ("Pack Image", "-pack <version> <file> [output]", "Упаковка образа"),
-            ("Simulator", "-simula", "Симуляция загрузчика"),
-            ("Sniffer Mode", "-sniffer", "Режим сниффера"),
+            ("Проверка", "-hello", "Проверка соединения с радио"),
+            ("Порты", "-port", "Список доступных COM-портов"),
+            ("Ребут", "-reboot", "Перезагрузка радио"),
+            ("ADC", "-rdadc [output]", "Прочитать ADC и сохранить"),
+            ("Чтение EEPROM", "-rdee [offset] [size] [output]", "Чтение EEPROM"),
+            ("Запись EEPROM", "-wree [offset] <file>", "Запись EEPROM из файла"),
+            ("Прошивка", "-wrflash <file>", "Прошивка стандартного образа"),
+            ("RAW FW", "-wrflashraw [version] <file>", "RAW прошивка"),
+            ("Распаковать", "-unpack <file> [output]", "Распаковка образа"),
+            ("Упаковать", "-pack <version> <file> [output]", "Упаковка образа"),
+            ("Симуляция", "-simula", "Симуляция загрузчика"),
+            ("Сниффер", "-sniffer", "Режим сниффера"),
             ("Parse Hex", "-parse <data>", "Парсинг hex-пакета"),
             ("Parse Plain", "-parse-plain <data>", "Парсинг plain-пакета")
         ]
@@ -83,53 +87,64 @@ class K5ToolGUI(QMainWindow):
             self.buttons.append(btn)
         main_layout.addLayout(cmd_layout)
 
-        # Args input
+        # Комбобокс истории + строка ввода
         self.args_input = QLineEdit()
         self.args_input.setPlaceholderText("Аргументы командной строки")
-        main_layout.addWidget(self.args_input)
+        self.history_box = QComboBox()
+        self.history_box.setEditable(True)
+        self.history_box.setInsertPolicy(QComboBox.NoInsert)
+        self.history_box.activated.connect(lambda idx: self.args_input.setText(self.history_box.itemText(idx)))
 
-        # Run/Stop layout
+        args_layout = QHBoxLayout()
+        args_layout.addWidget(self.args_input)
+        args_layout.addWidget(self.history_box)
+        main_layout.addLayout(args_layout)
+
+        # Run / Stop
         run_layout = QHBoxLayout()
-        self.run_btn = QPushButton("Run")
+        self.run_btn = QPushButton("▶ Старт (Ctrl+R)")
         self.run_btn.clicked.connect(self.run_command)
-        self.stop_btn = QPushButton("Stop")
+        self.run_btn.setShortcut(QKeySequence("Ctrl+R"))
+        self.stop_btn = QPushButton("■ Стоп (Ctrl+S)")
         self.stop_btn.clicked.connect(self.stop_command)
+        self.stop_btn.setShortcut(QKeySequence("Ctrl+S"))
         self.stop_btn.setEnabled(False)
         run_layout.addWidget(self.run_btn)
         run_layout.addWidget(self.stop_btn)
         main_layout.addLayout(run_layout)
 
-        # Tabs for stdout/stderr/log
+        # Tabs
         tabs = QTabWidget()
         self.stdout_view = QTextEdit(readOnly=True)
         self.stderr_view = QTextEdit(readOnly=True)
         self.log_view = QTextEdit(readOnly=True)
         tabs.addTab(self.stdout_view, "STDOUT")
         tabs.addTab(self.stderr_view, "STDERR")
-        tabs.addTab(self.log_view, "Log File")
+        tabs.addTab(self.log_view, "Лог")
         main_layout.addWidget(tabs)
 
-        # Progress & status
+        # Статус
         self.progress = QProgressBar()
-        self.status = QLabel("Ready")
+        self.step_label = QLabel("...")
+        self.status = QLabel("Готов")
         bottom = QHBoxLayout()
         bottom.addWidget(self.progress)
+        bottom.addWidget(self.step_label)
         bottom.addWidget(self.status)
         main_layout.addLayout(bottom)
 
         splitter.addWidget(main_widget)
         self.setCentralWidget(splitter)
 
-        # QProcess signals
+        # QProcess
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
         self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.finished.connect(self.process_finished)
 
-        # apply stored theme
         self.set_theme(settings.value('theme', 'light'))
 
     def set_k5tool_path(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Set k5tool Path")
+        path, _ = QFileDialog.getOpenFileName(self, "Установить путь к k5tool")
         if path:
             settings.setValue('k5tool_path', path)
             self.log(f"k5tool path set to {path}")
@@ -146,7 +161,7 @@ class K5ToolGUI(QMainWindow):
         filled = []
         for part in parts:
             if '<file>' in part or '[output]' in part:
-                sel = QFileDialog.getSaveFileName(self, "Select File")[0] if '[output]' in part else QFileDialog.getOpenFileName(self, "Select File")[0]
+                sel = QFileDialog.getSaveFileName(self, "Выберите файл")[0] if '[output]' in part else QFileDialog.getOpenFileName(self, "Выберите файл")[0]
                 if not sel:
                     return
                 filled.append(sel)
@@ -156,9 +171,15 @@ class K5ToolGUI(QMainWindow):
 
     def run_command(self):
         command = settings.value('k5tool_path', 'k5tool')
+        if not command:
+            QMessageBox.warning(self, "Ошибка", "Путь к k5tool не задан")
+            return
+
         args = self.args_input.text().split()
-        self.history.addItem(command + ' ' + ' '.join(args))
-        self.status.setText("Running...")
+        cmdline = command + ' ' + ' '.join(args)
+        self.history.addItem(cmdline)
+        self.history_box.addItem(self.args_input.text())
+        self.status.setText("Выполняется...")
         self.progress.setRange(0, 0)
         self.stdout_view.clear(); self.stderr_view.clear()
         self.process.start(command, args)
@@ -167,7 +188,7 @@ class K5ToolGUI(QMainWindow):
     def stop_command(self):
         if self.process.state() == QProcess.Running:
             self.process.kill()
-            self.status.setText("Stopped")
+            self.status.setText("Остановлено")
             self.progress.setRange(0, 100); self.progress.setValue(0)
             self.run_btn.setEnabled(True); self.stop_btn.setEnabled(False)
 
@@ -176,6 +197,7 @@ class K5ToolGUI(QMainWindow):
         self.stdout_view.moveCursor(QTextCursor.End)
         self.stdout_view.insertHtml(f"<span>{text}</span>")
         self.log(text)
+        self.step_label.setText(text.strip().split('\n')[-1])
         for tok in text.split():
             if tok.endswith('%') and tok[:-1].isdigit():
                 self.progress.setRange(0, 100); self.progress.setValue(int(tok[:-1]))
@@ -187,7 +209,7 @@ class K5ToolGUI(QMainWindow):
         self.log(text)
 
     def process_finished(self):
-        self.status.setText("Done")
+        self.status.setText("Завершено")
         self.progress.setRange(0, 100); self.progress.setValue(100)
         self.run_btn.setEnabled(True); self.stop_btn.setEnabled(False)
 
