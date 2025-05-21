@@ -2,6 +2,7 @@
 
 ![k5toolGUI](https://img.shields.io/badge/version-0.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![Pylint](https://github.com/iwizard7/k5toolGUI/actions/workflows/pylint.yml/badge.svg)](https://github.com/iwizard7/k5toolGUI/actions/workflows/pylint.yml)
 
 ---
 
