@@ -3,6 +3,7 @@ import subprocess
 import logging
 import threading
 from queue import Queue
+import os
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -11,9 +12,8 @@ from PySide6.QtWidgets import (
     QMessageBox, QComboBox
 )
 
-from PySide6.QtCore import QProcess, Qt, QSettings
+from PySide6.QtCore import QProcess, Qt, QSettings, QByteArray
 from PySide6.QtGui import QTextCursor, QColor, QAction, QKeySequence
-
 
 # Async logger thread
 log_queue = Queue()
@@ -36,6 +36,8 @@ class K5ToolGUI(QMainWindow):
         self.setWindowTitle("K5Tool GUI")
         self.resize(1000, 700)
         self.process = QProcess()
+
+        self.restoreGeometry(settings.value("geometry", QByteArray()))
 
         # Меню и тема
         menubar = QMenuBar(self)
@@ -102,12 +104,14 @@ class K5ToolGUI(QMainWindow):
 
         # Run / Stop
         run_layout = QHBoxLayout()
-        self.run_btn = QPushButton("▶ Старт (Ctrl+R)")
+        self.run_btn = QPushButton("▶ Старт (Ctrl+R / F5)")
         self.run_btn.clicked.connect(self.run_command)
         self.run_btn.setShortcut(QKeySequence("Ctrl+R"))
-        self.stop_btn = QPushButton("■ Стоп (Ctrl+S)")
+        self.run_btn.setShortcut(QKeySequence(Qt.Key_F5))
+        self.stop_btn = QPushButton("■ Стоп (Ctrl+S / Esc)")
         self.stop_btn.clicked.connect(self.stop_command)
         self.stop_btn.setShortcut(QKeySequence("Ctrl+S"))
+        self.stop_btn.setShortcut(QKeySequence(Qt.Key_Escape))
         self.stop_btn.setEnabled(False)
         run_layout.addWidget(self.run_btn)
         run_layout.addWidget(self.stop_btn)
@@ -133,8 +137,18 @@ class K5ToolGUI(QMainWindow):
         bottom.addWidget(self.status)
         main_layout.addLayout(bottom)
 
+        # Footer
+        footer = QLabel("<a href='https://github.com/iwizard7/k5toolGUI'>iwizard7</a> | Версия 0.1")
+        footer.setTextFormat(Qt.RichText)
+        footer.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        footer.setOpenExternalLinks(True)
+        footer.setAlignment(Qt.AlignLeft)
+        main_layout.addWidget(footer)
+
         splitter.addWidget(main_widget)
         self.setCentralWidget(splitter)
+        self.splitter = splitter
+        self.splitter.restoreState(settings.value("splitter_state", QByteArray()))
 
         # QProcess
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
@@ -145,13 +159,19 @@ class K5ToolGUI(QMainWindow):
 
     def set_k5tool_path(self):
         path, _ = QFileDialog.getOpenFileName(self, "Установить путь к k5tool")
-        if path:
+        if path and os.access(path, os.X_OK):
             settings.setValue('k5tool_path', path)
             self.log(f"k5tool path set to {path}")
+        else:
+            QMessageBox.warning(self, "Ошибка", "Выбранный файл не является исполняемым")
 
     def set_theme(self, theme):
         if theme == 'dark':
-            self.setStyleSheet("QWidget { background: #2b2b2b; color: #f0f0f0; }")
+            self.setStyleSheet("""
+                QWidget { background: #2b2b2b; color: #f0f0f0; }
+                QPushButton { background: #3c3c3c; border: 1px solid #555; padding: 5px; }
+                QTextEdit, QLineEdit, QComboBox { background: #1e1e1e; color: #f0f0f0; }
+            """)
         else:
             self.setStyleSheet("")
         settings.setValue('theme', theme)
@@ -178,7 +198,8 @@ class K5ToolGUI(QMainWindow):
         args = self.args_input.text().split()
         cmdline = command + ' ' + ' '.join(args)
         self.history.addItem(cmdline)
-        self.history_box.addItem(self.args_input.text())
+        if self.args_input.text() not in [self.history_box.itemText(i) for i in range(self.history_box.count())]:
+            self.history_box.addItem(self.args_input.text())
         self.status.setText("Выполняется...")
         self.progress.setRange(0, 0)
         self.stdout_view.clear(); self.stderr_view.clear()
@@ -205,7 +226,7 @@ class K5ToolGUI(QMainWindow):
     def handle_stderr(self):
         text = self.process.readAllStandardError().data().decode()
         self.stderr_view.moveCursor(QTextCursor.End)
-        self.stderr_view.insertHtml(f"<span style='color:red;'>{text}</span>")
+        self.stderr_view.insertHtml(f"<span style='color:red;'>" + text + "</span>")
         self.log(text)
 
     def process_finished(self):
@@ -222,6 +243,8 @@ class K5ToolGUI(QMainWindow):
 
     def closeEvent(self, event):
         log_queue.put(None)
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("splitter_state", self.splitter.saveState())
         super().closeEvent(event)
 
 if __name__ == '__main__':
