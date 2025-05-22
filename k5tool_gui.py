@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QProgressBar, QLabel, QLineEdit, QFileDialog,
     QInputDialog, QTabWidget, QListWidget, QSplitter, QMenu, QMenuBar,
-    QMessageBox, QComboBox
+    QMessageBox, QComboBox, QSizePolicy
 )
 
 from PySide6.QtCore import QProcess, Qt, QSettings, QByteArray
@@ -56,11 +56,22 @@ class K5ToolGUI(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         self.history = QListWidget()
         self.history.setToolTip("История ранее выполненных команд")
+        self.history.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.history.setMinimumWidth(400)
         self.history.itemClicked.connect(self.load_history)
         splitter.addWidget(self.history)
 
         main_widget = QWidget()
         main_layout = QVBoxLayout(main_widget)
+
+        # Порт
+        port_layout = QHBoxLayout()
+        self.port_input = QLineEdit()
+        self.port_input.setPlaceholderText("Укажите порт (например, COM3 или /dev/ttyUSB0)")
+        self.port_input.setText(settings.value('default_port', ''))
+        port_layout.addWidget(QLabel("Порт:"))
+        port_layout.addWidget(self.port_input)
+        main_layout.addLayout(port_layout)
 
         # Кнопки
         cmd_layout = QHBoxLayout()
@@ -127,30 +138,27 @@ class K5ToolGUI(QMainWindow):
         tabs.addTab(self.log_view, "Лог")
         main_layout.addWidget(tabs)
 
-        # Статус
+        # Статус и нижняя панель
         self.progress = QProgressBar()
         self.step_label = QLabel("...")
         self.status = QLabel("Готов")
-        bottom = QHBoxLayout()
-        bottom.addWidget(self.progress)
-        bottom.addWidget(self.step_label)
-        bottom.addWidget(self.status)
+        self.footer = QLabel("iwizard7 | Версия 0.2 | https://github.com/iwizard7/k5toolGUI")
+        self.footer.setStyleSheet("color: gray; font-size: 10pt;")
+        self.footer.setAlignment(Qt.AlignLeft)
+        bottom = QVBoxLayout()
+        status_line = QHBoxLayout()
+        status_line.addWidget(self.progress)
+        status_line.addWidget(self.step_label)
+        status_line.addWidget(self.status)
+        bottom.addLayout(status_line)
+        bottom.addWidget(self.footer)
         main_layout.addLayout(bottom)
-
-        # Footer
-        footer = QLabel("<a href='https://github.com/iwizard7/k5toolGUI'>iwizard7</a> | Версия 0.1")
-        footer.setTextFormat(Qt.RichText)
-        footer.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        footer.setOpenExternalLinks(True)
-        footer.setAlignment(Qt.AlignLeft)
-        main_layout.addWidget(footer)
 
         splitter.addWidget(main_widget)
         self.setCentralWidget(splitter)
         self.splitter = splitter
         self.splitter.restoreState(settings.value("splitter_state", QByteArray()))
 
-        # QProcess
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
         self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.finished.connect(self.process_finished)
@@ -187,6 +195,10 @@ class K5ToolGUI(QMainWindow):
                 filled.append(sel)
             else:
                 filled.append(part)
+        port = self.port_input.text().strip()
+        if port:
+            filled.insert(0, f"-port={port}")
+            settings.setValue('default_port', port)
         self.args_input.setText(' '.join(filled))
 
     def run_command(self):
@@ -196,6 +208,11 @@ class K5ToolGUI(QMainWindow):
             return
 
         args = self.args_input.text().split()
+        port = self.port_input.text().strip()
+        if port and f"-port={port}" not in args:
+            args.insert(0, f"-port={port}")
+            settings.setValue('default_port', port)
+
         cmdline = command + ' ' + ' '.join(args)
         self.history.addItem(cmdline)
         if self.args_input.text() not in [self.history_box.itemText(i) for i in range(self.history_box.count())]:
