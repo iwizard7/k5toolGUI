@@ -4,16 +4,16 @@ import logging
 import threading
 from queue import Queue
 import os
+import serial.tools.list_ports
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QProgressBar, QLabel, QLineEdit, QFileDialog,
-    QInputDialog, QTabWidget, QListWidget, QSplitter, QMenu, QMenuBar,
-    QMessageBox, QComboBox, QSizePolicy
+    QTabWidget, QComboBox, QSizePolicy, QMenuBar, QMenu, QMessageBox
 )
 
 from PySide6.QtCore import QProcess, Qt, QSettings, QByteArray
-from PySide6.QtGui import QTextCursor, QColor, QAction, QKeySequence
+from PySide6.QtGui import QTextCursor, QAction, QKeySequence
 
 # Async logger thread
 log_queue = Queue()
@@ -52,26 +52,23 @@ class K5ToolGUI(QMainWindow):
         path_act = QAction("Установить путь к k5tool", self, triggered=self.set_k5tool_path)
         settings_menu.addAction(path_act)
 
-        # Основной сплиттер
-        splitter = QSplitter(Qt.Horizontal)
-        self.history = QListWidget()
-        self.history.setToolTip("История ранее выполненных команд")
-        self.history.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.history.setMinimumWidth(400)
-        self.history.itemClicked.connect(self.load_history)
-        splitter.addWidget(self.history)
-
+        # Главный виджет
         main_widget = QWidget()
+        self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
 
         # Порт
         port_layout = QHBoxLayout()
-        self.port_input = QLineEdit()
-        self.port_input.setPlaceholderText("Укажите порт (например, COM3 или /dev/ttyUSB0)")
-        self.port_input.setText(settings.value('default_port', ''))
+        self.port_combo = QComboBox()
+        self.port_combo.setEditable(True)
+        self.port_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.port_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.port_combo.setCurrentText(settings.value('default_port', ''))
         port_layout.addWidget(QLabel("Порт:"))
-        port_layout.addWidget(self.port_input)
+        port_layout.addWidget(self.port_combo)
         main_layout.addLayout(port_layout)
+
+        self.refresh_ports()
 
         # Кнопки
         cmd_layout = QHBoxLayout()
@@ -100,18 +97,10 @@ class K5ToolGUI(QMainWindow):
             self.buttons.append(btn)
         main_layout.addLayout(cmd_layout)
 
-        # Комбобокс истории + строка ввода
+        # Аргументы
         self.args_input = QLineEdit()
         self.args_input.setPlaceholderText("Аргументы командной строки")
-        self.history_box = QComboBox()
-        self.history_box.setEditable(True)
-        self.history_box.setInsertPolicy(QComboBox.NoInsert)
-        self.history_box.activated.connect(lambda idx: self.args_input.setText(self.history_box.itemText(idx)))
-
-        args_layout = QHBoxLayout()
-        args_layout.addWidget(self.args_input)
-        args_layout.addWidget(self.history_box)
-        main_layout.addLayout(args_layout)
+        main_layout.addWidget(self.args_input)
 
         # Run / Stop
         run_layout = QHBoxLayout()
@@ -142,7 +131,7 @@ class K5ToolGUI(QMainWindow):
         self.progress = QProgressBar()
         self.step_label = QLabel("...")
         self.status = QLabel("Готов")
-        self.footer = QLabel("iwizard7 | Версия 0.2 | https://github.com/iwizard7/k5toolGUI")
+        self.footer = QLabel("iwizard7 | Версия 0.3 | https://github.com/iwizard7/k5toolGUI")
         self.footer.setStyleSheet("color: gray; font-size: 10pt;")
         self.footer.setAlignment(Qt.AlignLeft)
         bottom = QVBoxLayout()
@@ -154,16 +143,20 @@ class K5ToolGUI(QMainWindow):
         bottom.addWidget(self.footer)
         main_layout.addLayout(bottom)
 
-        splitter.addWidget(main_widget)
-        self.setCentralWidget(splitter)
-        self.splitter = splitter
-        self.splitter.restoreState(settings.value("splitter_state", QByteArray()))
-
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
         self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.finished.connect(self.process_finished)
 
         self.set_theme(settings.value('theme', 'light'))
+
+    def refresh_ports(self):
+        self.port_combo.clear()
+        ports = serial.tools.list_ports.comports()
+        port_names = sorted([port.device for port in ports])
+        self.port_combo.addItems(port_names)
+        saved = settings.value('default_port', '')
+        if saved:
+            self.port_combo.setCurrentText(saved)
 
     def set_k5tool_path(self):
         path, _ = QFileDialog.getOpenFileName(self, "Установить путь к k5tool")
@@ -195,7 +188,7 @@ class K5ToolGUI(QMainWindow):
                 filled.append(sel)
             else:
                 filled.append(part)
-        port = self.port_input.text().strip()
+        port = self.port_combo.currentText().strip()
         if port:
             filled.insert(0, f"-port={port}")
             settings.setValue('default_port', port)
@@ -208,15 +201,12 @@ class K5ToolGUI(QMainWindow):
             return
 
         args = self.args_input.text().split()
-        port = self.port_input.text().strip()
+        port = self.port_combo.currentText().strip()
         if port and f"-port={port}" not in args:
             args.insert(0, f"-port={port}")
             settings.setValue('default_port', port)
 
         cmdline = command + ' ' + ' '.join(args)
-        self.history.addItem(cmdline)
-        if self.args_input.text() not in [self.history_box.itemText(i) for i in range(self.history_box.count())]:
-            self.history_box.addItem(self.args_input.text())
         self.status.setText("Выполняется...")
         self.progress.setRange(0, 0)
         self.stdout_view.clear(); self.stderr_view.clear()
@@ -251,9 +241,6 @@ class K5ToolGUI(QMainWindow):
         self.progress.setRange(0, 100); self.progress.setValue(100)
         self.run_btn.setEnabled(True); self.stop_btn.setEnabled(False)
 
-    def load_history(self, item):
-        self.args_input.setText(item.text().split(' ', 1)[1])
-
     def log(self, message):
         log_queue.put(message)
         self.log_view.append(message)
@@ -261,7 +248,6 @@ class K5ToolGUI(QMainWindow):
     def closeEvent(self, event):
         log_queue.put(None)
         settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("splitter_state", self.splitter.saveState())
         super().closeEvent(event)
 
 if __name__ == '__main__':
