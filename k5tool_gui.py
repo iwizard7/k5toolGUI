@@ -81,7 +81,7 @@ class K5ToolGUI(QMainWindow):
             ("Чтение EEPROM", "-rdee [offset] [size] [output]", "Чтение EEPROM"),
             ("Запись EEPROM", "-wree [offset] <file>", "Запись EEPROM из файла"),
             ("Прошивка", "-wrflash <file>", "Прошивка стандартного образа"),
-            ("RAW FW", "-wrflashraw [version] <file>", "RAW прошивка"),
+            ("Прошивка RAW", "-wrflashraw [version] <file>", "RAW прошивка"),
             ("Распаковать", "-unpack <file> [output]", "Распаковка образа"),
             ("Упаковать", "-pack <version> <file> [output]", "Упаковка образа"),
             ("Симуляция", "-simula", "Симуляция загрузчика"),
