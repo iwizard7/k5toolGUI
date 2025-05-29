@@ -131,7 +131,7 @@ class K5ToolGUI(QMainWindow):
         self.progress = QProgressBar()
         self.step_label = QLabel("...")
         self.status = QLabel("Готов")
-        self.footer = QLabel("iwizard7 | Версия 0.3 | https://github.com/iwizard7/k5toolGUI")
+        self.footer = QLabel("iwizard7 | Версия 0.4 | https://github.com/iwizard7/k5toolGUI")
         self.footer.setStyleSheet("color: gray; font-size: 10pt;")
         self.footer.setAlignment(Qt.AlignLeft)
         bottom = QVBoxLayout()
