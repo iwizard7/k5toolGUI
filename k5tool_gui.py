@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from PySide6.QtCore import QProcess, Qt, QSettings, QByteArray
-from PySide6.QtGui import QTextCursor, QAction, QKeySequence
+from PySide6.QtGui import QTextCursor, QAction, QKeySequence, QShortcut
 
 # Async logger thread
 log_queue = Queue()
@@ -24,11 +24,11 @@ def log_writer():
             break
         with open(settings.value('logfile', 'k5tool_gui.log'), 'a', encoding='utf-8') as f:
             f.write(record + '\n')
-log_thread = threading.Thread(target=log_writer, daemon=True)
-log_thread.start()
 
 # Load settings
 settings = QSettings('K5Tool', 'K5ToolGUI')
+log_thread = threading.Thread(target=log_writer, daemon=True)
+log_thread.start()
 
 class K5ToolGUI(QMainWindow):
     def __init__(self):
@@ -106,12 +106,12 @@ class K5ToolGUI(QMainWindow):
         run_layout = QHBoxLayout()
         self.run_btn = QPushButton("▶ Старт (Ctrl+R / F5)")
         self.run_btn.clicked.connect(self.run_command)
-        self.run_btn.setShortcut(QKeySequence("Ctrl+R"))
-        self.run_btn.setShortcut(QKeySequence(Qt.Key_F5))
+        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self.run_command)
+        QShortcut(QKeySequence(Qt.Key_F5), self).activated.connect(self.run_command)
         self.stop_btn = QPushButton("■ Стоп (Ctrl+S / Esc)")
         self.stop_btn.clicked.connect(self.stop_command)
-        self.stop_btn.setShortcut(QKeySequence("Ctrl+S"))
-        self.stop_btn.setShortcut(QKeySequence(Qt.Key_Escape))
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.stop_command)
+        QShortcut(QKeySequence(Qt.Key_Escape), self).activated.connect(self.stop_command)
         self.stop_btn.setEnabled(False)
         run_layout.addWidget(self.run_btn)
         run_layout.addWidget(self.stop_btn)
@@ -190,7 +190,8 @@ class K5ToolGUI(QMainWindow):
                 filled.append(part)
         port = self.port_combo.currentText().strip()
         if port:
-            filled.insert(0, f"-port={port}")
+            filled.insert(0, "-port")
+            filled.insert(1, port)
             settings.setValue('default_port', port)
         self.args_input.setText(' '.join(filled))
 
@@ -202,11 +203,11 @@ class K5ToolGUI(QMainWindow):
 
         args = self.args_input.text().split()
         port = self.port_combo.currentText().strip()
-        if port and f"-port={port}" not in args:
-            args.insert(0, f"-port={port}")
+        if port and ("-port" not in args):
+            args.insert(0, port)
+            args.insert(0, "-port")
             settings.setValue('default_port', port)
 
-        cmdline = command + ' ' + ' '.join(args)
         self.status.setText("Выполняется...")
         self.progress.setRange(0, 0)
         self.stdout_view.clear(); self.stderr_view.clear()
