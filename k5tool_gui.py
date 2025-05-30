@@ -59,7 +59,7 @@ class K5ToolGUI(QMainWindow):
         port_layout = QHBoxLayout()
         port_layout.addWidget(QLabel("Порт:"))
         self.port_combo = QComboBox()
-        self.port_combo.setFixedWidth(150)
+        self.port_combo.setFixedWidth(210)
         self.port_combo.setEditable(True)
         self.port_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.port_combo.setInsertPolicy(QComboBox.NoInsert)
@@ -145,14 +145,14 @@ class K5ToolGUI(QMainWindow):
         main_layout.addLayout(run_layout)
 
         self.log_view = QTextEdit(readOnly=True)
-        self.log_view.setStyleSheet("QTextEdit { background-color: #fdfdfd; font-family: monospace; }")
+        self.log_view.setStyleSheet("QTextEdit { background-color: #fdfdfd; font-family: menlo; }")
         main_layout.addWidget(self.log_view)
 
         self.progress = QProgressBar()
         self.step_label = QLabel("...")
         self.status = QLabel("Готов")
         self.footer = QLabel()
-        self.footer.setText(f"<a href='https://gitlab.com/qrp73/K5TOOL'>qrp73 GitLab</a>")
+        self.footer.setText(f"<a href='https://github.com/iwizard7/k5toolGUI'>iwizard7 GitLab</a>")
         self.footer.setOpenExternalLinks(True)
         self.footer.setStyleSheet("color: gray; font-size: 10pt;")
         self.footer.setAlignment(Qt.AlignLeft)
@@ -165,7 +165,7 @@ class K5ToolGUI(QMainWindow):
         bottom.addWidget(self.footer)
         main_layout.addLayout(bottom)
 
-        self.process.readyReadStandardOutput.connect(self.handle_stdout)
+        self.process.readyReadStandardOutput.connect(self.handle_stdout) # STDOUT отключено
         self.process.readyReadStandardError.connect(self.handle_stdout)  # STDERR отключено
         self.process.finished.connect(self.process_finished)
 
