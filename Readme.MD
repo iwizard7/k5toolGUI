@@ -1,8 +1,3 @@
-Конечно! Вот пример красиво оформленного README.md для твоего проекта k5toolUI:
-
-⸻
-
-
 # 🛠️ k5toolUI — Графическая оболочка для `k5tool`
 
 ![PySide6](https://img.shields.io/badge/built%20with-PySide6-6D9BC3.svg?style=for-the-badge)
