@@ -19,7 +19,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QTextCursor, QDesktopServices, QKeySequence, QAction
 
-VERSION = "1.0"
+VERSION = "1.1"
 
 # ---------------------------
 # Потокобезопасное логирование
